@@ -335,3 +335,268 @@
 **Используемый промт:** `DEFAULT_FOLLOW_UP_GENERATION_PROMPT_TEMPLATE`
 
 ---
+
+## Пайплайн RAG (Retrieval-Augmented Generation)
+
+**Назначение:** Предоставляет AI доступ к документам и базам знаний, извлекая релевантную информацию и добавляя её в контекст разговора с цитированием источников.
+
+**Файлы:**
+- `/backend/open_webui/routers/retrieval.py` - загрузка документов, управление векторной БД
+- `/backend/open_webui/utils/middleware.py` - `chat_completion_with_files_handler()` (строка ~915-1500)
+- `/backend/open_webui/retrieval/` - векторная БД, embeddings, reranking
+- `/backend/open_webui/routers/knowledge.py` - управление базами знаний
+- `/backend/open_webui/models/knowledge.py` - модель данных знаний
+
+**Конфигурация:**
+- `RAG_EMBEDDING_MODEL` - модель для embeddings
+- `RAG_RERANKING_MODEL` - модель для reranking (опционально)
+- `RAG_TEMPLATE` - шаблон для инжекции контекста
+- `RAG_CHUNK_SIZE` / `RAG_CHUNK_OVERLAP` - размер и перекрытие чанков
+- `RAG_TOP_K` - количество документов для извлечения
+- `ENABLE_RAG_HYBRID_SEARCH` - гибридный поиск (BM25 + semantic)
+
+### Схема работы (Часть 1: Загрузка документов)
+
+```
+┌──────────────┐
+│   Frontend   │
+│ Upload File  │
+└──────┬───────┘
+       │
+       │ POST /files/
+       │ FormData: { file, collection_id }
+       ▼
+┌─────────────────────────────────────────────┐
+│  process_file() endpoint                    │
+│  /backend/open_webui/routers/retrieval.py   │
+└──────┬──────────────────────────────────────┘
+       │
+       │ 1. Определяет тип файла
+       │    (PDF, DOCX, XLSX, CSV, TXT, MD, JSON, etc.)
+       │
+       ▼
+┌─────────────────────────────────────────────┐
+│  Парсинг документа (LangChain loaders)      │
+│  - PDFLoader для PDF                        │
+│  - UnstructuredWordDocumentLoader для DOCX  │
+│  - CSVLoader для CSV                        │
+│  - и т.д.                                   │
+└──────┬──────────────────────────────────────┘
+       │
+       │ Извлеченный текст
+       │
+       ▼
+┌─────────────────────────────────────────────┐
+│  Text Splitting (чанкирование)              │
+│  - RecursiveCharacterTextSplitter           │
+│  - TokenTextSplitter                        │
+│  - MarkdownTextSplitter                     │
+│                                             │
+│  Параметры:                                 │
+│  - chunk_size = RAG_CHUNK_SIZE (400)        │
+│  - chunk_overlap = RAG_CHUNK_OVERLAP (100)  │
+└──────┬──────────────────────────────────────┘
+       │
+       │ Массив текстовых чанков
+       │ [chunk1, chunk2, chunk3, ...]
+       │
+       ▼
+┌─────────────────────────────────────────────┐
+│  Embeddings Generation                      │
+│  RAG_EMBEDDING_MODEL                        │
+│  (sentence-transformers/all-MiniLM-L6-v2)   │
+└──────┬──────────────────────────────────────┘
+       │
+       │ Векторы embeddings
+       │ [[0.123, -0.456, ...], ...]
+       │
+       ▼
+┌─────────────────────────────────────────────┐
+│  Vector Database Storage                    │
+│  - Chroma (default)                         │
+│  - Qdrant, Milvus, PGVector, Pinecone, etc. │
+│                                             │
+│  Metadata для каждого чанка:                │
+│  - file_id                                  │
+│  - collection_id                            │
+│  - source (file name)                       │
+│  - page_number                              │
+└──────┬──────────────────────────────────────┘
+       │
+       ▼
+┌──────────────┐
+│  Document    │
+│   Indexed    │
+└──────────────┘
+```
+
+### Схема работы (Часть 2: Поиск и инжекция контекста)
+
+```
+┌──────────────┐
+│   Frontend   │
+│   User asks  │
+│   question   │
+└──────┬───────┘
+       │
+       │ POST /chat/completions
+       │ Body: { messages, files: [file_ids] }
+       ▼
+┌─────────────────────────────────────────────┐
+│  chat_completion_with_files_handler()       │
+│  /backend/open_webui/utils/middleware.py    │
+└──────┬──────────────────────────────────────┘
+       │
+       │ 1. Проверяет наличие файлов в запросе
+       │ 2. Если files пусты, использует Knowledge Base
+       │
+       ▼
+┌─────────────────────────────────────────────┐
+│  Генерация поисковых запросов               │
+│                                             │
+│  generate_queries() →                       │
+│  QUERY_GENERATION_PROMPT_TEMPLATE           │
+│                                             │
+│  Вход: последнее сообщение пользователя    │
+│  Выход: ["query1", "query2", "query3"]      │
+└──────┬──────────────────────────────────────┘
+       │
+       │ Поисковые запросы
+       │
+       ▼
+┌─────────────────────────────────────────────┐
+│  Vector Search                              │
+│                                             │
+│  Для каждого запроса:                       │
+│  1. Генерирует embedding запроса            │
+│  2. Ищет похожие векторы в БД               │
+│     (cosine similarity)                     │
+│                                             │
+│  Если ENABLE_RAG_HYBRID_SEARCH:             │
+│  - Semantic search (embeddings)             │
+│  - BM25 keyword search                      │
+│  - Объединение результатов                  │
+└──────┬──────────────────────────────────────┘
+       │
+       │ Найденные документы (chunks)
+       │
+       ▼
+┌─────────────────────────────────────────────┐
+│  Reranking (опционально)                    │
+│                                             │
+│  Если RAG_RERANKING_MODEL установлена:      │
+│  - CrossEncoder переранжирует результаты    │
+│  - Учитывает контекст запроса               │
+│  - Сортирует по релевантности               │
+└──────┬──────────────────────────────────────┘
+       │
+       │ Top-K документов (RAG_TOP_K)
+       │
+       ▼
+┌─────────────────────────────────────────────┐
+│  Форматирование контекста                   │
+│  RAG_TEMPLATE                               │
+│                                             │
+│  Переменные:                                │
+│  {{CONTEXT}} = найденные документы с ID     │
+│  {{QUERY}} = вопрос пользователя            │
+│                                             │
+│  Пример контекста:                          │
+│  <source id="1">                            │
+│  Python is a programming language...        │
+│  </source>                                  │
+│  <source id="2">                            │
+│  Django is a web framework...               │
+│  </source>                                  │
+└──────┬──────────────────────────────────────┘
+       │
+       │ Отформатированный промт с контекстом
+       │
+       ▼
+┌─────────────────────────────────────────────┐
+│  Инжекция в системное сообщение             │
+│                                             │
+│  add_or_update_system_message()             │
+│                                             │
+│  Добавляет RAG промт в начало messages:     │
+│  [                                          │
+│    {role: "system", content: RAG_PROMPT},   │
+│    {role: "user", content: "question"},     │
+│    ...                                      │
+│  ]                                          │
+└──────┬──────────────────────────────────────┘
+       │
+       │ Обогащенные сообщения
+       │
+       ▼
+┌─────────────────────────────────────────────┐
+│  LLM (OpenAI, Ollama, etc.)                 │
+│                                             │
+│  Модель получает:                           │
+│  - Контекст из документов                   │
+│  - Инструкции по цитированию [id]           │
+│  - Вопрос пользователя                      │
+└──────┬──────────────────────────────────────┘
+       │
+       │ Ответ с цитатами
+       │
+       ▼
+┌─────────────────────────────────────────────┐
+│  Ответ с источниками                        │
+│                                             │
+│  "Python is a high-level programming        │
+│  language [1]. Django is a popular web      │
+│  framework for Python [2]."                 │
+│                                             │
+│  Источники:                                 │
+│  [1] intro_to_python.pdf                    │
+│  [2] django_tutorial.md                     │
+└──────┬──────────────────────────────────────┘
+       │
+       ▼
+┌──────────────┐
+│   Frontend   │
+│  (Показывает │
+│   ответ и    │
+│  источники)  │
+└──────────────┘
+```
+
+### Поток данных
+
+**Часть 1 - Индексация:**
+
+**Вход:**
+- Файл (PDF, DOCX, TXT, etc.)
+- collection_id (опционально)
+
+**Промежуточные данные:**
+- Извлеченный текст
+- Текстовые чанки (chunks)
+- Векторы embeddings
+
+**Выход:**
+- Индексированный документ в векторной БД
+- file_id для последующего использования
+
+**Часть 2 - Retrieval:**
+
+**Вход:**
+- Вопрос пользователя
+- file_ids или knowledge_base_id
+
+**Промежуточные данные:**
+- Поисковые запросы (1-3 штуки)
+- Найденные документы/чанки
+- Переранжированные результаты
+
+**Выход:**
+- Контекст для LLM в формате RAG_TEMPLATE
+- Ответ с инлайн-цитатами [id]
+- Список источников
+
+**Используемые промты:**
+- `DEFAULT_QUERY_GENERATION_PROMPT_TEMPLATE` - для генерации запросов
+- `DEFAULT_RAG_TEMPLATE` - для форматирования контекста
+
+---
