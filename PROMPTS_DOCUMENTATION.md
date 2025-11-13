@@ -100,3 +100,80 @@ JSON format: { "tags": ["tag1", "tag2", "tag3"] }
 ```
 
 ---
+
+### Генерация изображений
+
+**Расположение:** `/backend/open_webui/config.py:1653-1671`
+**Переменная:** `DEFAULT_IMAGE_PROMPT_GENERATION_PROMPT_TEMPLATE`
+**Когда используется:** Генерирует детальное описание для создания изображений с помощью AI генераторов изображений на основе контекста чата.
+
+**Описание:**
+Этот промт создает подробное описание для генерации изображений, анализируя контекст из последних 6 сообщений чата. Промт инструктирует модель быть максимально описательной, включая детали о цветах, формах и важных элементах. Описание должно быть понятным человеку, который не видит изображение.
+
+**Особенности:**
+- Использует последние 6 сообщения: `{{MESSAGES:END:6}}`
+- Фокусируется на наиболее важных аспектах
+- Избегает предположений и несуществующей информации
+- Использует язык чата
+- Для сложных изображений фокусируется на главных элементах
+
+```python
+DEFAULT_IMAGE_PROMPT_GENERATION_PROMPT_TEMPLATE = """### Task:
+Generate a detailed prompt for am image generation task based on the given language and context. Describe the image as if you were explaining it to someone who cannot see it. Include relevant details, colors, shapes, and any other important elements.
+
+### Guidelines:
+- Be descriptive and detailed, focusing on the most important aspects of the image.
+- Avoid making assumptions or adding information not present in the image.
+- Use the chat's primary language; default to English if multilingual.
+- If the image is too complex, focus on the most prominent elements.
+
+### Output:
+Strictly return in JSON format:
+{
+    "prompt": "Your detailed description here."
+}
+
+### Chat History:
+<chat_history>
+{{MESSAGES:END:6}}
+</chat_history>"""
+```
+
+---
+
+### Генерация follow-up вопросов
+
+**Расположение:** `/backend/open_webui/config.py:1680-1694`
+**Переменная:** `DEFAULT_FOLLOW_UP_GENERATION_PROMPT_TEMPLATE`
+**Когда используется:** Предлагает 3-5 релевантных последующих вопросов, которые пользователь может задать для продолжения беседы.
+
+**Описание:**
+Промт анализирует последние 6 сообщений и генерирует естественные вопросы, которые пользователь мог бы задать далее. Вопросы формулируются от лица пользователя, обращенные к ассистенту. Они должны быть краткими, понятными и напрямую связаны с обсуждаемой темой.
+
+**Особенности:**
+- Использует последние 6 сообщений: `{{MESSAGES:END:6}}`
+- Вопросы от лица пользователя (не ассистента)
+- Не повторяет уже обсужденное
+- Для коротких бесед предлагает более общие, но релевантные вопросы
+- Выводит JSON массив из 3-5 вопросов
+- Только релевантные вопросы, имеющие смысл в контексте
+
+```python
+DEFAULT_FOLLOW_UP_GENERATION_PROMPT_TEMPLATE = """### Task:
+Suggest 3-5 relevant follow-up questions or prompts that the user might naturally ask next in this conversation as a **user**, based on the chat history, to help continue or deepen the discussion.
+### Guidelines:
+- Write all follow-up questions from the user's point of view, directed to the assistant.
+- Make questions concise, clear, and directly related to the discussed topic(s).
+- Only suggest follow-ups that make sense given the chat content and do not repeat what was already covered.
+- If the conversation is very short or not specific, suggest more general (but relevant) follow-ups the user might ask.
+- Use the conversation's primary language; default to English if multilingual.
+- Response must be a JSON array of strings, no extra text or formatting.
+### Output:
+JSON format: { "follow_ups": ["Question 1?", "Question 2?", "Question 3?"] }
+### Chat History:
+<chat_history>
+{{MESSAGES:END:6}}
+</chat_history>"""
+```
+
+---
