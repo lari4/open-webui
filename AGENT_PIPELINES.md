@@ -127,3 +127,211 @@
 **Используемый промт:** `DEFAULT_TITLE_GENERATION_PROMPT_TEMPLATE` (см. PROMPTS_DOCUMENTATION.md)
 
 ---
+
+## Пайплайн генерации тегов
+
+**Назначение:** Автоматически категоризирует чат, присваивая 1-3 широких тега и 1-3 специфических подтемы для организации и поиска.
+
+**Файлы:**
+- `/backend/open_webui/routers/tasks.py` - endpoint `generate_chat_tags()`
+- `/backend/open_webui/utils/task.py` - функция `tags_generation_template()`
+- `/backend/open_webui/config.py` - `DEFAULT_TAGS_GENERATION_PROMPT_TEMPLATE`
+
+**Конфигурация:**
+- `ENABLE_TAGS_GENERATION` - включить/выключить функцию
+- `TAGS_GENERATION_PROMPT_TEMPLATE` - кастомный шаблон промта
+
+### Схема работы
+
+```
+┌──────────────┐
+│   Frontend   │
+│ (Chat ended  │
+│  or request) │
+└──────┬───────┘
+       │
+       │ POST /tasks/tags/completions
+       │ Body: { chat_id, user_message, messages }
+       ▼
+┌──────────────────────────────────────┐
+│  generate_chat_tags() endpoint       │
+│  /backend/open_webui/routers/tasks.py│
+└──────┬───────────────────────────────┘
+       │
+       │ 1. Получает полную историю чата
+       │ 2. Использует последние 6 сообщений для контекста
+       │
+       ▼
+┌──────────────────────────────────────┐
+│  tags_generation_template()          │
+│  /backend/open_webui/utils/task.py   │
+└──────┬───────────────────────────────┘
+       │
+       │ Заменяет: {{MESSAGES:END:6}}
+       │
+       ▼
+┌──────────────────────────────────────┐
+│  Сформированный промт                │
+│                                      │
+│  ### Task:                           │
+│  Generate 1-3 broad tags...          │
+│                                      │
+│  ### Chat History:                   │
+│  [Последние 6 сообщений о Python]    │
+└──────┬───────────────────────────────┘
+       │
+       ▼
+┌──────────────────────────────────────┐
+│  TASK_MODEL                          │
+└──────┬───────────────────────────────┘
+       │
+       │ Анализирует темы разговора
+       │
+       ▼
+┌──────────────────────────────────────┐
+│  Результат (JSON)                    │
+│  {                                   │
+│    "tags": [                         │
+│      "Technology",                   │
+│      "Programming",                  │
+│      "Python",                       │
+│      "Web Development"               │
+│    ]                                 │
+│  }                                   │
+└──────┬───────────────────────────────┘
+       │
+       ▼
+┌──────────────────────────────────────┐
+│  Сохранение тегов в БД               │
+│  chat.tags = ["Technology", ...]     │
+└──────┬───────────────────────────────┘
+       │
+       ▼
+┌──────────────┐
+│   Frontend   │
+│ (Отображает  │
+│    теги)     │
+└──────────────┘
+```
+
+### Поток данных
+
+**Вход:**
+- `chat_id` - ID чата
+- `user_message` - последнее сообщение
+- `messages` - полная история чата
+
+**Промежуточные данные:**
+- Последние 6 сообщений для контекста
+- Промт с категориями (Science, Technology, Philosophy, Arts, etc.)
+
+**Выход:**
+- JSON массив тегов
+- Пример: `{ "tags": ["Technology", "Programming", "Python"] }`
+
+**Используемый промт:** `DEFAULT_TAGS_GENERATION_PROMPT_TEMPLATE`
+
+---
+
+## Пайплайн генерации follow-up вопросов
+
+**Назначение:** Предлагает 3-5 релевантных вопросов, которые пользователь может задать для продолжения беседы.
+
+**Файлы:**
+- `/backend/open_webui/routers/tasks.py` - endpoint `generate_follow_ups()`
+- `/backend/open_webui/utils/task.py` - функция `follow_up_generation_template()`
+- `/backend/open_webui/config.py` - `DEFAULT_FOLLOW_UP_GENERATION_PROMPT_TEMPLATE`
+
+**Конфигурация:**
+- `ENABLE_FOLLOW_UP_GENERATION` - включить/выключить функцию
+- `FOLLOW_UP_GENERATION_PROMPT_TEMPLATE` - кастомный шаблон промта
+
+### Схема работы
+
+```
+┌──────────────┐
+│   Frontend   │
+│  (After AI   │
+│   response)  │
+└──────┬───────┘
+       │
+       │ POST /tasks/follow_up/completions
+       │ Body: { messages }
+       ▼
+┌──────────────────────────────────────┐
+│  generate_follow_ups() endpoint      │
+│  /backend/open_webui/routers/tasks.py│
+└──────┬───────────────────────────────┘
+       │
+       │ Получает последние 6 сообщений
+       │
+       ▼
+┌──────────────────────────────────────┐
+│  follow_up_generation_template()     │
+│  /backend/open_webui/utils/task.py   │
+└──────┬───────────────────────────────┘
+       │
+       │ Заменяет: {{MESSAGES:END:6}}
+       │
+       ▼
+┌──────────────────────────────────────┐
+│  Сформированный промт                │
+│                                      │
+│  ### Task:                           │
+│  Suggest 3-5 relevant follow-up      │
+│  questions...                        │
+│                                      │
+│  ### Chat History:                   │
+│  User: Explain recursion             │
+│  AI: Recursion is when a function... │
+└──────┬───────────────────────────────┘
+       │
+       ▼
+┌──────────────────────────────────────┐
+│  TASK_MODEL                          │
+└──────┬───────────────────────────────┘
+       │
+       │ Генерирует релевантные вопросы
+       │
+       ▼
+┌──────────────────────────────────────┐
+│  Результат (JSON)                    │
+│  {                                   │
+│    "follow_ups": [                   │
+│      "Can you show me an example     │
+│       of recursion in Python?",      │
+│      "What's the difference between  │
+│       recursion and iteration?",     │
+│      "How do I avoid stack overflow  │
+│       with recursion?",              │
+│      "When should I use recursion?", │
+│      "What is tail recursion?"       │
+│    ]                                 │
+│  }                                   │
+└──────┬───────────────────────────────┘
+       │
+       ▼
+┌──────────────┐
+│   Frontend   │
+│ (Показывает  │
+│  кнопки с    │
+│  вопросами)  │
+└──────────────┘
+```
+
+### Поток данных
+
+**Вход:**
+- `messages` - история чата (последние 6 сообщений)
+
+**Промежуточные данные:**
+- Контекст разговора
+- Последние темы обсуждения
+
+**Выход:**
+- JSON массив вопросов (3-5 штук)
+- Вопросы от лица пользователя, направленные ассистенту
+
+**Используемый промт:** `DEFAULT_FOLLOW_UP_GENERATION_PROMPT_TEMPLATE`
+
+---
