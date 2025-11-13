@@ -377,3 +377,111 @@ Ensure that the tools are effectively utilized to achieve the highest-quality an
 ```
 
 ---
+
+## Промты для RAG (Retrieval-Augmented Generation)
+
+### RAG - Ответ на основе контекста
+
+**Расположение:** `/backend/open_webui/config.py:2676-2704`
+**Переменная:** `DEFAULT_RAG_TEMPLATE`
+**Когда используется:** Генерирует ответы на основе предоставленного контекста из документов/базы знаний с использованием инлайн-цитат.
+
+**Описание:**
+Это ключевой промт для RAG (Retrieval-Augmented Generation) системы. Промт инструктирует модель отвечать на запросы пользователя, используя предоставленный контекст из документов, и включать инлайн-цитаты в формате [id] только когда источник содержит атрибут id. Промт также указывает, как обрабатывать случаи, когда информация отсутствует или контекст некачественный.
+
+**Особенности:**
+- Получает контекст из документов: `{{CONTEXT}}`
+- Получает запрос пользователя: `{{QUERY}}`
+- Использует инлайн-цитаты [id] только если в `<source id="...">` есть атрибут id
+- Отвечает на языке запроса пользователя
+- Четко указывает, если не знает ответа
+- Если информации нет в контексте, но модель знает ответ - объясняет это и отвечает
+- Если контекст нечитаемый - информирует пользователя
+- Не использует XML теги в ответе
+- Цитаты должны быть краткими и напрямую связаны с информацией
+
+```python
+DEFAULT_RAG_TEMPLATE = """### Task:
+Respond to the user query using the provided context, incorporating inline citations in the format [id] **only when the <source> tag includes an explicit id attribute** (e.g., <source id="1">).
+
+### Guidelines:
+- If you don't know the answer, clearly state that.
+- If uncertain, ask the user for clarification.
+- Respond in the same language as the user's query.
+- If the context is unreadable or of poor quality, inform the user and provide the best possible answer.
+- If the answer isn't present in the context but you possess the knowledge, explain this to the user and provide the answer using your own understanding.
+- **Only include inline citations using [id] (e.g., [1], [2]) when the <source> tag includes an id attribute.**
+- Do not cite if the <source> tag does not contain an id attribute.
+- Do not use XML tags in your response.
+- Ensure citations are concise and directly related to the information provided.
+
+### Example of Citation:
+If the user asks about a specific topic and the information is found in a source with a provided id attribute, the response should include the citation like in the following example:
+* "According to the study, the proposed method increases efficiency by 20% [1]."
+
+### Output:
+Provide a clear and direct response to the user's query, including inline citations in the format [id] only when the <source> tag with id attribute is present in the context.
+
+<context>
+{{CONTEXT}}
+</context>
+
+<user_query>
+{{QUERY}}
+</user_query>
+"""
+```
+
+---
+
+## Промты для специальных возможностей
+
+### Генерация эмодзи по эмоциям
+
+**Расположение:** `/backend/open_webui/config.py:1850-1852`
+**Переменная:** `DEFAULT_EMOJI_GENERATION_PROMPT_TEMPLATE`
+**Когда используется:** Анализирует сообщение и генерирует подходящее эмодзи, отражающее эмоцию/выражение лица говорящего.
+
+**Описание:**
+Простой промт для определения эмоционального состояния говорящего и выбора подходящего эмодзи. Анализирует текст сообщения и возвращает эмодзи, отражающее вероятное выражение лица (радость, грусть, злость, удивление и т.д.).
+
+**Особенности:**
+- Получает сообщение: `{{prompt}}`
+- Интерпретирует эмоции из текста
+- Возвращает разнообразные эмодзи (😊, 😢, 😡, 😱, и др.)
+- Отражает выражение лица говорящего
+
+```python
+DEFAULT_EMOJI_GENERATION_PROMPT_TEMPLATE = """Your task is to reflect the speaker's likely facial expression through a fitting emoji. Interpret emotions from the message and reflect their facial expression using fitting, diverse emojis (e.g., 😊, 😢, 😡, 😱).
+
+Message: ```{{prompt}}```"""
+```
+
+---
+
+### MOA - Mixture of Agents (Синтез ответов)
+
+**Расположение:** `/backend/open_webui/config.py:1854-1858`
+**Переменная:** `DEFAULT_MOA_GENERATION_PROMPT_TEMPLATE`
+**Когда используется:** Синтезирует единый качественный ответ из нескольких ответов разных моделей.
+
+**Описание:**
+Промт для технологии Mixture of Agents (MOA), которая объединяет ответы от нескольких разных моделей в один высококачественный ответ. Промт критически оценивает полученные ответы, распознает предвзятость или ошибки, и создает точный, всесторонний и хорошо структурированный ответ.
+
+**Особенности:**
+- Получает запрос пользователя: `{{prompt}}`
+- Получает ответы от разных моделей: `{{responses}}`
+- Критически оценивает информацию на предмет предвзятости/ошибок
+- Не просто копирует ответы, а создает улучшенную версию
+- Обеспечивает точность, надежность и связность
+- Соответствует высочайшим стандартам качества
+
+```python
+DEFAULT_MOA_GENERATION_PROMPT_TEMPLATE = """You have been provided with a set of responses from various models to the latest user query: "{{prompt}}"
+
+Your task is to synthesize these responses into a single, high-quality response. It is crucial to critically evaluate the information provided in these responses, recognizing that some of it may be biased or incorrect. Your response should not simply replicate the given answers but should offer a refined, accurate, and comprehensive reply to the instruction. Ensure your response is well-structured, coherent, and adheres to the highest standards of accuracy and reliability.
+
+Responses from models: {{responses}}"""
+```
+
+---
