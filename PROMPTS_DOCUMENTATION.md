@@ -291,3 +291,89 @@ Output:
 ```
 
 ---
+
+## Промты для работы с инструментами
+
+### Вызов функций и инструментов
+
+**Расположение:** `/backend/open_webui/config.py:1826-1847`
+**Переменная:** `DEFAULT_TOOLS_FUNCTION_CALLING_PROMPT_TEMPLATE`
+**Когда используется:** Выбирает подходящие инструменты/функции из доступного списка на основе запроса пользователя.
+
+**Описание:**
+Этот промт анализирует запрос пользователя и выбирает подходящие инструменты из списка доступных. Промт получает список всех доступных инструментов через переменную `{{TOOLS}}` и возвращает JSON с массивом вызовов инструментов, включая их имена и параметры. Если ни один инструмент не подходит, возвращает пустой массив.
+
+**Особенности:**
+- Получает список инструментов: `{{TOOLS}}`
+- Возвращает только JSON объект без дополнительного текста
+- Для каждого инструмента указывает имя и параметры
+- Если инструменты не нужны, возвращает пустой массив
+- Может выбрать несколько инструментов одновременно
+- Формат: `{ "tool_calls": [{"name": "...", "parameters": {...}}] }`
+
+```python
+DEFAULT_TOOLS_FUNCTION_CALLING_PROMPT_TEMPLATE = """Available Tools: {{TOOLS}}
+
+Your task is to choose and return the correct tool(s) from the list of available tools based on the query. Follow these guidelines:
+
+- Return only the JSON object, without any additional text or explanation.
+
+- If no tools match the query, return an empty array:
+   {
+     "tool_calls": []
+   }
+
+- If one or more tools match the query, construct a JSON response containing a "tool_calls" array with objects that include:
+   - "name": The tool's name.
+   - "parameters": A dictionary of required parameters and their corresponding values.
+
+The format for the JSON response is strictly:
+{
+  "tool_calls": [
+    {"name": "toolName1", "parameters": {"key1": "value1"}},
+    {"name": "toolName2", "parameters": {"key2": "value2"}}
+  ]
+}"""
+```
+
+---
+
+### Code Interpreter (Python интерпретатор)
+
+**Расположение:** `/backend/open_webui/config.py:1979-1993`
+**Переменная:** `DEFAULT_CODE_INTERPRETER_PROMPT`
+**Когда используется:** Системный промт для Code Interpreter - встроенного Python интерпретатора, который выполняет код прямо в браузере пользователя.
+
+**Описание:**
+Это системные инструкции для AI при использовании встроенного Python интерпретатора. Промт объясняет, как использовать XML теги `<code_interpreter>` для выполнения Python кода, какие библиотеки доступны, как выводить результаты и анализировать их. Код выполняется быстро в браузере пользователя, позволяя проводить вычисления, анализ данных, визуализацию и многое другое.
+
+**Особенности:**
+- Использует XML теги: `<code_interpreter type="code" lang="python"></code_interpreter>`
+- Выполняется прямо в браузере пользователя
+- Доступен широкий набор Python библиотек
+- ВАЖНО: не использовать markdown форматирование (```) внутри тегов
+- Всегда выводить результаты через print
+- После выполнения предоставлять анализ и интерпретацию
+- При неясных результатах - уточнять и повторять
+- Отображать ссылки на файлы/изображения в ответе
+- Поддерживает API вызовы, работу с данными, визуализацию
+
+```python
+DEFAULT_CODE_INTERPRETER_PROMPT = """
+#### Tools Available
+
+1. **Code Interpreter**: `<code_interpreter type="code" lang="python"></code_interpreter>`
+   - You have access to a Python shell that runs directly in the user's browser, enabling fast execution of code for analysis, calculations, or problem-solving.  Use it in this response.
+   - The Python code you write can incorporate a wide array of libraries, handle data manipulation or visualization, perform API calls for web-related tasks, or tackle virtually any computational challenge. Use this flexibility to **think outside the box, craft elegant solutions, and harness Python's full potential**.
+   - To use it, **you must enclose your code within `<code_interpreter type="code" lang="python">` XML tags** and stop right away. If you don't, the code won't execute.
+   - When writing code in the code_interpreter XML tag, Do NOT use the triple backticks code block for markdown formatting, example: ```py # python code ``` will cause an error because it is markdown formatting, it is not python code.
+   - When coding, **always aim to print meaningful outputs** (e.g., results, tables, summaries, or visuals) to better interpret and verify the findings. Avoid relying on implicit outputs; prioritize explicit and clear print statements so the results are effectively communicated to the user.
+   - After obtaining the printed output, **always provide a concise analysis, interpretation, or next steps to help the user understand the findings or refine the outcome further.**
+   - If the results are unclear, unexpected, or require validation, refine the code and execute it again as needed. Always aim to deliver meaningful insights from the results, iterating if necessary.
+   - **If a link to an image, audio, or any file is provided in markdown format in the output, ALWAYS regurgitate word for word, explicitly display it as part of the response to ensure the user can access it easily, do NOT change the link.**
+   - All responses should be communicated in the chat's primary language, ensuring seamless understanding. If the chat is multilingual, default to English for clarity.
+
+Ensure that the tools are effectively utilized to achieve the highest-quality analysis for the user."""
+```
+
+---
