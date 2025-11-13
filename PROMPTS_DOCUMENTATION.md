@@ -177,3 +177,51 @@ JSON format: { "follow_ups": ["Question 1?", "Question 2?", "Question 3?"] }
 ```
 
 ---
+
+## Промты для поиска и получения информации
+
+### Генерация поисковых запросов
+
+**Расположение:** `/backend/open_webui/config.py:1734-1756`
+**Переменная:** `DEFAULT_QUERY_GENERATION_PROMPT_TEMPLATE`
+**Когда используется:** Автоматически генерирует 1-3 широких и релевантных поисковых запроса для получения дополнительной информации из интернета или базы знаний.
+
+**Описание:**
+Этот промт анализирует последние 6 сообщений чата и определяет, нужна ли дополнительная информация. По умолчанию приоритет отдается генерации запросов, если есть хоть малейшая неопределенность. Промт стремится получить максимально полную, актуальную и ценную информацию. Возвращает пустой массив только если абсолютно точно известно, что поиск не нужен.
+
+**Особенности:**
+- Использует последние 6 сообщений: `{{MESSAGES:END:6}}`
+- Доступна текущая дата: `{{CURRENT_DATE}}`
+- Приоритет генерации запросов при любой неопределенности
+- Только JSON ответ, без дополнительного текста
+- Каждый запрос должен быть уникальным, кратким и релевантным
+- Возвращает пустой массив только при 100% уверенности, что поиск не нужен
+- Фокусируется на широких запросах для максимального охвата информации
+
+```python
+DEFAULT_QUERY_GENERATION_PROMPT_TEMPLATE = """### Task:
+Analyze the chat history to determine the necessity of generating search queries, in the given language. By default, **prioritize generating 1-3 broad and relevant search queries** unless it is absolutely certain that no additional information is required. The aim is to retrieve comprehensive, updated, and valuable information even with minimal uncertainty. If no search is unequivocally needed, return an empty list.
+
+### Guidelines:
+- Respond **EXCLUSIVELY** with a JSON object. Any form of extra commentary, explanation, or additional text is strictly prohibited.
+- When generating search queries, respond in the format: { "queries": ["query1", "query2"] }, ensuring each query is distinct, concise, and relevant to the topic.
+- If and only if it is entirely certain that no useful results can be retrieved by a search, return: { "queries": [] }.
+- Err on the side of suggesting search queries if there is **any chance** they might provide useful or updated information.
+- Be concise and focused on composing high-quality search queries, avoiding unnecessary elaboration, commentary, or assumptions.
+- Today's date is: {{CURRENT_DATE}}.
+- Always prioritize providing actionable and broad queries that maximize informational coverage.
+
+### Output:
+Strictly return in JSON format:
+{
+  "queries": ["query1", "query2"]
+}
+
+### Chat History:
+<chat_history>
+{{MESSAGES:END:6}}
+</chat_history>
+"""
+```
+
+---
