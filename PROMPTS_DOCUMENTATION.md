@@ -225,3 +225,69 @@ Strictly return in JSON format:
 ```
 
 ---
+
+## Промты для интерактивных функций
+
+### Автодополнение текста
+
+**Расположение:** `/backend/open_webui/config.py:1777-1817`
+**Переменная:** `DEFAULT_AUTOCOMPLETE_GENERATION_PROMPT_TEMPLATE`
+**Когда используется:** Автоматически дополняет текст пользователя в режиме реального времени, в зависимости от типа завершения (общее или поисковый запрос).
+
+**Описание:**
+Этот промт работает как система автодополнения, которая продолжает текст пользователя естественным образом. Промт анализирует контекст из последних 6 сообщений, тип завершения (General или Search Query) и текст, который нужно продолжить. Важно, что система продолжает текст напрямую, не повторяя и не перефразируя исходный текст.
+
+**Особенности:**
+- Использует последние 6 сообщений: `{{MESSAGES:END:6}}`
+- Принимает тип завершения: `{{TYPE}}` (General или Search Query)
+- Принимает текст для продолжения: `{{PROMPT}}`
+- Продолжает текст естественно, без повторения
+- Для неопределенных случаев возвращает пустую строку
+- Избегает излишних объяснений и не связанных идей
+- Выводит только JSON: `{ "text": "<продолжение>" }`
+
+```python
+DEFAULT_AUTOCOMPLETE_GENERATION_PROMPT_TEMPLATE = """### Task:
+You are an autocompletion system. Continue the text in `<text>` based on the **completion type** in `<type>` and the given language.
+
+### **Instructions**:
+1. Analyze `<text>` for context and meaning.
+2. Use `<type>` to guide your output:
+   - **General**: Provide a natural, concise continuation.
+   - **Search Query**: Complete as if generating a realistic search query.
+3. Start as if you are directly continuing `<text>`. Do **not** repeat, paraphrase, or respond as a model. Simply complete the text.
+4. Ensure the continuation:
+   - Flows naturally from `<text>`.
+   - Avoids repetition, overexplaining, or unrelated ideas.
+5. If unsure, return: `{ "text": "" }`.
+
+### **Output Rules**:
+- Respond only in JSON format: `{ "text": "<your_completion>" }`.
+
+### **Examples**:
+#### Example 1:
+Input:
+<type>General</type>
+<text>The sun was setting over the horizon, painting the sky</text>
+Output:
+{ "text": "with vibrant shades of orange and pink." }
+
+#### Example 2:
+Input:
+<type>Search Query</type>
+<text>Top-rated restaurants in</text>
+Output:
+{ "text": "New York City for Italian cuisine." }
+
+---
+### Context:
+<chat_history>
+{{MESSAGES:END:6}}
+</chat_history>
+<type>{{TYPE}}</type>
+<text>{{PROMPT}}</text>
+#### Output:
+"""
+```
+
+---
